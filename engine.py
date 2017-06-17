@@ -49,15 +49,23 @@ class TodoNote(PrintableObject):
 
         return res
 
+
 class Record(PrintableObject):
     def __init__(self):
+        super(Record, self).__init__()
         self.record_dir = os.path.expanduser("~/.todo/records/")
+        self.engine_dir = os.path.expanduser("~/.todo/")
+        self.logfile = self.engine_dir + "todo.log"
+        self.internal_state = self.engine_dir + "todo.state"
+
 
     def add_note(self, date, note):
+        self.log("Added note: %s, %s\n" % (note.title, standard_date(date)))
         filename = os.path.join(self.record_dir, standard_date(date) + '.json')
         record = self.load_record(date)
         record['notes'].append(note.to_dict())
         self.save_record(date, record)
+
 
     def load_record(self, date):
         filename = os.path.join(self.record_dir, standard_date(date) + '.json')
@@ -94,32 +102,51 @@ class Record(PrintableObject):
 
     def remove_at_index(self, date, index):
         record = self.load_record(date)
+        self.log("Removed note: %s, %s\n" % (record['notes'][index]['title'] , standard_date(date)))
         record['notes'].pop(index)
         self.save_record(date, record)
 
     def check_index(self, date, index):
-            record = self.load_record(date)
-            record['notes'][index]['isDone'] = not record['notes'][index]['isDone']
-            self.save_record(date, record)
+        record = self.load_record(date)
+        self.log("Checked note: %s, %s\n" % (record['notes'][index]['title'] , standard_date(date)))
+        record['notes'][index]['isDone'] = not record['notes'][index]['isDone']
+        self.save_record(date, record)
 
-# class Engine(PrintableObject):
-#     def __init__(self):
-#         self.engine_dir = os.path.expanduser("~/.todo/")
-#         self.logfile = self.engine_dir + "todo.log"
-#         self.internal_state = self.engine_dir + "todo.state"
-#
-#         self.record = Record()
-#
-#     def log(self, msg):
-#         with open(self.logfile, "a") as logfile:
-#             logfile.write(standard_time(time.time()) + "| " + msg)
-#
-#     def check(self):
-#
-#     def load_state(self):
-#         if not os.path.isfile(self.internal_state):
-#
-#         internal_state = json.load(open(self.internal_state, "r"))
-#
-#
+    def log(self, msg):
+        with open(self.logfile, "a") as logfile:
+            logfile.write(standard_time(time.time()) + "| " + msg)
+
+    def load_state(self):
+        self.internal_state_check()
+        if not os.path.isfile(self.internal_state):
+            internal_state = {}
+            internal_state['last_modified'] = time.time()
+            internal_state['created'] = time.time()
+            internal_state['last_action'] = time.time()
+
+            return internal_state
+
+        internal_state = json.load(open(self.internal_state, "r"))
+
+        return internal_state
+
+    def save_state(self):
+        json.dump(open(self.internal_state, "w"))
+
+    def internal_state_check(self):
+        internal_state = self.load_state()
+        yesterday = float((datetime.datetime.fromtimestamp(internal_state['last_action']) - datetime.timedelta(days=1)).strftime("%s"))
+
+        record_yesterday = self.load_record(yesterday)
+        record_today = self.load_record(time.time())
+
+        for i, note in enumerate(record_yesterday['notes']):
+            if not note['isDone'] and note not in record_today['notes']:
+                record_today['notes'].append(note)
+
+        self.save_record(time.time(), record_today)
+
+
+
+
 
