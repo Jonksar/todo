@@ -60,6 +60,7 @@ class Record(PrintableObject):
 
 
     def add_note(self, date, note):
+        self.internal_state_check()
         self.log("Added note: %s, %s\n" % (note.title, standard_date(date)))
         filename = os.path.join(self.record_dir, standard_date(date) + '.json')
         record = self.load_record(date)
@@ -81,6 +82,7 @@ class Record(PrintableObject):
         json.dump(content, open(filename, "w"), indent=4, sort_keys=True)
 
     def print_tasklist(self, date=time.time()):
+        self.internal_state_check()
         record = self.load_record(date)
 
         res = ""
@@ -101,12 +103,14 @@ class Record(PrintableObject):
         print res
 
     def remove_at_index(self, date, index):
+        self.internal_state_check()
         record = self.load_record(date)
         self.log("Removed note: %s, %s\n" % (record['notes'][index]['title'] , standard_date(date)))
         record['notes'].pop(index)
         self.save_record(date, record)
 
     def check_index(self, date, index):
+        self.internal_state_check()
         record = self.load_record(date)
         self.log("Checked note: %s, %s\n" % (record['notes'][index]['title'] , standard_date(date)))
         record['notes'][index]['isDone'] = not record['notes'][index]['isDone']
@@ -117,7 +121,6 @@ class Record(PrintableObject):
             logfile.write(standard_time(time.time()) + "| " + msg)
 
     def load_state(self):
-        self.internal_state_check()
         if not os.path.isfile(self.internal_state):
             internal_state = {}
             internal_state['last_modified'] = time.time()
@@ -130,21 +133,25 @@ class Record(PrintableObject):
 
         return internal_state
 
-    def save_state(self):
-        json.dump(open(self.internal_state, "w"))
+    def save_state(self, state):
+        json.dump(state, open(self.internal_state, "w"), indent=4, sort_keys=True)
 
     def internal_state_check(self):
         internal_state = self.load_state()
         yesterday = float((datetime.datetime.fromtimestamp(internal_state['last_action']) - datetime.timedelta(days=1)).strftime("%s"))
 
-        record_yesterday = self.load_record(yesterday)
+        record_yesterday = self.load_record(internal_state['last_modified'])
         record_today = self.load_record(time.time())
 
         for i, note in enumerate(record_yesterday['notes']):
             if not note['isDone'] and note not in record_today['notes']:
                 record_today['notes'].append(note)
 
+        internal_state['last_modified'] = time.time()
+
         self.save_record(time.time(), record_today)
+        self.save_state(internal_state)
+
 
 
 
