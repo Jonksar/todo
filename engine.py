@@ -1,5 +1,4 @@
 #!/usr/bin/python
-
 import json
 import csv
 import os, sys
@@ -8,6 +7,12 @@ import random
 import hashlib
 import datetime
 import argparse
+import requests
+import nacl.secret
+import nacl.utils
+import uuid
+import time, datetime
+import base64
 
 def standard_hash(data):
     return hashlib.md5(data).hexdigest()
@@ -153,7 +158,98 @@ class Record(PrintableObject):
         self.save_state(internal_state)
 
 
+class NetworkingLayer:
+    VERSION = 10
+    def __init__(self):
+
+        # User details
+        self.username = None
+        self.password_hash = None
+
+        # SecretBox for symmetric encryption
+        self.box = None
+
+    def init(self, username, password_hash):
+        # for use in terminal
+        # self.username = raw_input("Logging in to TODO: \n\nusenrame: ")
+        # self.password_hash = standard_hash(getpass.getpass("Please insert your password:\n" ))
+
+        # auth is already established
+        if self.box is not None:
+            return
+
+        key = bin(int(self.password_hash, 16))[:nacl.secret.SecretBox.KEY_SIZE]
+
+        # Establish secretbox
+        self.box = nacl.secret.SecretBox(key)
+
+        return
+
+    def encrypt_data(self, data):
+        if self.box is None:
+            raise ValueError("Box is not initialized. Call init before you can encrypt data")
+
+        nonce = nacl.secret.random(nacl.secret.SecretBox.NONCE_SIZE)
+        encrypted = self.box.encrypt(data, nonce)
+
+        return encrypted, nonce
+
+    def decrypt_data(self, data):
+        if self.box is None:
+            raise ValueError("Box is not initialized. Call init before you can decrypt data")
+        plaintext = self.box.decrypt(data)
+
+        return plaintext
+
+    def construct_request(self, data, method='insert'):
+        assert(self.box is not None, "cannot construct json, box not constructed; use init")
+        assert(self.username is not None, "cannot construct json, username missing")
+        assert(self.password_hash is not None, "cannot construct json, password not entered")
+
+        r = requests.post(
+                'https://data.adinfinitum.ee/store/todo/' + self.username,
+                auth=(self.username, self.password_hash),
+                data = {
+                    'method': method,
+                    'data': {
+                        'id': str(uuid.uuid4()),
+                        'version': self.VERSION,
+                        'date': datetime.datetime.fromtimestamp(time.time()).isoformat(),
+                        'meta': {},
+                        'type': 'note',
+                        'data': {'base64': base64.b64encode(self.encrypt_data(data)),
+                                 'encrypted' : "nacl"}
+                        }
+                    }
+                )
 
 
+    def add_note(self, date, note):
+        pass
 
+    def load_record(self, date):
+        pass
+
+    def save_record(self, date, content):
+        pass
+
+    def remove_at_index(self, date, index):
+        pass
+
+    def check_index(self, date, index):
+        pass
+
+    def log(self, msg):
+        pass
+        """ with open(self.logfile, "a") as logfile:
+            logfile.write(standard_time(time.time()) + "| " + msg) """
+
+    def load_state(self):
+        pass
+
+    def save_state(self, state):
+        pass
+
+    def internal_state_check(self):
+        pass
 
