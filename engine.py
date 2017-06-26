@@ -178,6 +178,7 @@ class NetworkingLayer:
         if self.box is not None:
             return
 
+        # TODO decode from base 16 first
         key = bin(int(self.password_hash, 16))[:nacl.secret.SecretBox.KEY_SIZE]
 
         # Establish secretbox
@@ -202,9 +203,9 @@ class NetworkingLayer:
         return plaintext
 
     def construct_request(self, data, method='insert'):
-        assert(self.box is not None, "cannot construct json, box not constructed; use init")
-        assert(self.username is not None, "cannot construct json, username missing")
-        assert(self.password_hash is not None, "cannot construct json, password not entered")
+        assert self.box is not None, "cannot construct json, box not constructed; use init"
+        assert self.username is not None, "cannot construct json, username missing"
+        assert self.password_hash is not None, "cannot construct json, passwordnot entered"
 
         r = requests.post(
                 'https://data.adinfinitum.ee/store/todo/' + self.username,
