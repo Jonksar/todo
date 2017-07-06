@@ -13,6 +13,13 @@ import nacl.utils
 import uuid
 import time, datetime
 import base64
+import re
+
+from pprint import pprint
+
+def isvalid_uuid4(val):
+    UUID_PATTERN = re.compile(r'^[\da-f]{8}-([\da-f]{4}-){3}[\da-f]{12}$', re.IGNORECASE)
+    return UUID_PATTERN.match(val)
 
 def standard_hash(data):
     return hashlib.md5(data).hexdigest()
@@ -22,6 +29,9 @@ def standard_time(unix_timestamp):
 
 def standard_date(unix_timestamp):
     return datetime.datetime.fromtimestamp(unix_timestamp).strftime("%Y-%m-%d")
+
+def standard_date_to_unix(string):
+    return float(datetime.datetime.strptime(string, "%Y-%m-%d_%H:%M:%S").strftime("%s"))
 
 class PrintableObject(object):
     def __init__(self):
@@ -40,7 +50,7 @@ class TodoNote(PrintableObject):
         self.isDone = False
         self.title = title
         self.description = description
-        self.random_hash = hashlib.md5(os.urandom(32)).hexdigest()
+        self.id = str(uuid.uuid4())
 
     def to_dict(self):
         return self.__dict__
@@ -150,6 +160,7 @@ class Record(PrintableObject):
 
         for i, note in enumerate(record_yesterday['notes']):
             if not note['isDone'] and note not in record_today['notes']:
+                note['last_modified'] = standard_time(time.time())
                 record_today['notes'].append(note)
 
         internal_state['last_modified'] = time.time()
@@ -160,7 +171,8 @@ class Record(PrintableObject):
 
 class NetworkingLayer:
     VERSION = 10
-    def __init__(self):
+    def __init__(self, record=None):
+        self.record = record
 
         # User details
         self.username = None
@@ -169,10 +181,14 @@ class NetworkingLayer:
         # SecretBox for symmetric encryption
         self.box = None
 
-    def init(self, username, password_hash):
+    def init(self, username, password):
         # for use in terminal
         # self.username = raw_input("Logging in to TODO: \n\nusenrame: ")
         # self.password_hash = standard_hash(getpass.getpass("Please insert your password:\n" ))
+
+        self.username = username
+        self.password = password
+        self.password_hash = standard_hash(password)
 
         # auth is already established
         if self.box is not None:
@@ -198,59 +214,121 @@ class NetworkingLayer:
     def decrypt_data(self, data):
         if self.box is None:
             raise ValueError("Box is not initialized. Call init before you can decrypt data")
+
         plaintext = self.box.decrypt(data)
 
         return plaintext
 
-    def construct_request(self, data, method='insert'):
+    def process_encrypted_note(self, note):
+
+        if not note.has_key('encrypted'):
+            Warning("Expected encrypted note, returned None instead")
+            return None
+
+        plaintext = self.decrypt_data(base64.b64decode(note['base64']))
+
+        try:
+            res_note = json.loads(plaintext)
+            return res_note
+        except ValueError:
+            return None
+
+
+
+    def full_sync(self):
+        remote_notes_json = self.request_notes()
+        remote_notes = json.loads(remote_notes_json)['data']
+
+        print "remote: ", remote_notes
+
+        remote_hashes = {}
+        local_hashes = {}
+
+        for note in remote_notes:
+            processed_note = self.process_encrypted_note(note['data'])
+
+            # Some decoding members failed
+            if processed_note is None: continue
+            remote_hashes[standard_hash(processed_note)] = processed_note
+
+        # for note in local_notes:
+        for root, dirs, files in os.walk(os.path.expanduser(self.record.record_dir)):
+            for name in files:
+                if name.endswith('.json'):
+                    for note in json.load(open(os.path.join(root, name), 'r'))['notes']:
+                        # get rid of legacy
+                        if note.has_key('random_hash'):
+                            note['id'] = str(uuid.uuid4()) # generates new random
+                            note.pop('random_hash')
+
+                        local_hashes[standard_hash(json.dumps(note, indent=4, sort_keys=True))] = note
+
+        pprint(local_hashes.keys())
+        pprint(remote_hashes.keys())
+
+        # defines generator for list items not in remote_hashes
+        for hash_not_in_remote in (_hash for _hash in local_hashes.keys() if _hash not in remote_hashes.keys()):
+            self.upload_note(local_hashes[hash_not_in_remote])
+
+        for hash_not_in_local in (_hash for _hash in remote_hashes.keys() if _hash not in local_hashes.keys()):
+            self.save_note_locally(remote_hashes[hash_not_in_remote])
+
+    def request_notes(self):
+        r = requests.post(
+                'https://data.adinfinitum.ee/store/todo/' + self.username,
+                auth=(self.username, self.password),
+                json = {
+                    'method': "select",
+                    'data': {
+                        'type': 'note',
+                        }
+                    }
+                )
+
+        return r.text
+
+    def save_note_locally(self, note):
+
+        if isinstance(note, str):
+            note = json.loads(note)
+
+        note_date = standard_date(standard_date_to_unix(note['last_modified']))
+
+        r = self.record.load_record(note_date)
+        r['notes'].append(note)
+        self.record.save_record(note_date, r)
+
+
+    def upload_note(self, data):
         assert self.box is not None, "cannot construct json, box not constructed; use init"
         assert self.username is not None, "cannot construct json, username missing"
         assert self.password_hash is not None, "cannot construct json, passwordnot entered"
 
+        if isinstance(data, dict):
+            data = json.dumps(data, sort_keys=True, indent=4)
+
+        encrypted_data, nonce = self.encrypt_data(data)
+
         r = requests.post(
                 'https://data.adinfinitum.ee/store/todo/' + self.username,
-                auth=(self.username, self.password_hash),
-                data = {
-                    'method': method,
+                auth=(self.username, self.password),
+                json = {
+                    'method': 'insert',
                     'data': {
                         'id': str(uuid.uuid4()),
                         'version': self.VERSION,
                         'date': datetime.datetime.fromtimestamp(time.time()).isoformat(),
                         'meta': {},
                         'type': 'note',
-                        'data': {'base64': base64.b64encode(self.encrypt_data(data)),
-                                 'encrypted' : "nacl"}
+                        'data': {'base64': base64.b64encode(encrypted_data),
+                            'nonce': base64.b64encode(nonce),
+                            'encrypted' : "nacl"}
                         }
                     }
                 )
-
-
-    def add_note(self, date, note):
-        pass
-
-    def load_record(self, date):
-        pass
-
-    def save_record(self, date, content):
-        pass
-
-    def remove_at_index(self, date, index):
-        pass
-
-    def check_index(self, date, index):
-        pass
 
     def log(self, msg):
         pass
         """ with open(self.logfile, "a") as logfile:
             logfile.write(standard_time(time.time()) + "| " + msg) """
-
-    def load_state(self):
-        pass
-
-    def save_state(self, state):
-        pass
-
-    def internal_state_check(self):
-        pass
 
