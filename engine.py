@@ -93,6 +93,10 @@ class Record(PrintableObject):
         return json.load(open(filename, "r"))
 
     def save_record(self, date, content):
+        if not os.path.isdir(self.record_dir):
+            os.mkdir(self.engine_dir)
+            os.mkdir(self.record_dir)
+
         filename = os.path.join(self.record_dir, standard_date(date) + '.json')
         json.dump(content, open(filename, "w"), indent=4, sort_keys=True)
 
