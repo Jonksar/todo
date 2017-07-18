@@ -50,7 +50,6 @@ class TodoDaemon():
                     connection.close()
                     print res
 
-
 if __name__ == '__main__':
     daemon = TodoDaemon()
     daemon_runner = runner.DaemonRunner(daemon)

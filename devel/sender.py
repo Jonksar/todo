@@ -9,13 +9,16 @@ sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 print 'connecting to %s' % server_address
 
 try:
-        sock.connect(server_address)
+    sock.connect(server_address)
 except socket.error, msg:
-        sys.exit(1)
+    print msg
+    sys.exit(1)
 
 try:
     # Send data
-    message = 'This is the message.  It will be repeated.'
+    message = "penises " * 9001
+    print message
+
     print 'sending "%s"' % message
     sock.sendall(message)
 
@@ -26,6 +29,9 @@ try:
         data = sock.recv(256)
         amount_received += len(data)
         print 'received "%s"' % data
+
+except Exception as e:
+    raise e
 
 finally:
     print 'closing socket'

@@ -2,7 +2,7 @@
 import os.path, sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
-from todo.engine import *
+from engine import *
 
 
 def parse_input_to_date(string):

@@ -18,8 +18,8 @@ import re
 from pprint import pprint
 
 def isvalid_uuid4(val):
-    UUID_PATTERN = re.compile(r'^[\da-f]{8}-([\da-f]{4}-){3}[\da-f]{12}$', re.IGNORECASE)
-    return UUID_PATTERN.match(val)
+    uuid_pattern = re.compile(r'^[\da-f]{8}-([\da-f]{4}-){3}[\da-f]{12}$', re.IGNORECASE)
+    return uuid_pattern.match(val)
 
 def standard_hash(data):
     return hashlib.md5(data).hexdigest()
