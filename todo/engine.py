@@ -73,13 +73,16 @@ class Record(PrintableObject):
         self.logfile = self.engine_dir + "todo.log"
         self.internal_state = self.engine_dir + "todo.state"
 
-
     def add_note(self, date, note):
+        if isinstance(note, TodoNote):
+            note = note.to_dict()
+
         self.internal_state_check()
-        self.log("Added note: %s, %s\n" % (note.title, standard_date(date)))
+        self.log("Added note: %s, %s\n" % (note['title'], standard_date(date)))
         filename = os.path.join(self.record_dir, standard_date(date) + '.json')
         record = self.load_record(date)
-        record['notes'].append(note.to_dict())
+
+        record['notes'].append(note)
         self.save_record(date, record)
 
 
@@ -267,8 +270,8 @@ class NetworkingLayer:
 
                         local_hashes[standard_hash(json.dumps(note, indent=4, sort_keys=True))] = note
 
-        pprint(local_hashes.keys())
-        pprint(remote_hashes.keys())
+        # pprint(local_hashes.keys())
+        # pprint(remote_hashes.keys())
 
         # defines generator for list items not in remote_hashes
         for hash_not_in_remote in (_hash for _hash in local_hashes.keys() if _hash not in remote_hashes.keys()):
