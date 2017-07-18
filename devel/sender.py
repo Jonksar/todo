@@ -16,8 +16,7 @@ except socket.error, msg:
 
 try:
     # Send data
-    message = "penises " * 9001
-    print message
+    message = open (sys.argv[1], 'r').read()
 
     print 'sending "%s"' % message
     sock.sendall(message)
